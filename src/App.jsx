@@ -39,21 +39,15 @@ function App() {
             textSize: node.textSize || 6,
           }));
 
-          // Build a lookup map
-          const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
-
-          // Normalize links
-          const links = data.links.map(link => {
-            const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-            const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-            return {
-              ...link,
-              source: nodeMap[srcId],
-              target: nodeMap[tgtId],
-              color: link.color || '#F0F0F0',
-              thickness: link.thickness || 1,
-            };
-          });
+          // Normalize links: ensure source and target are node IDs (strings)
+          // The library will resolve these IDs to actual node objects internally.
+          const links = data.links.map(link => ({
+            ...link,
+            source: typeof link.source === 'object' ? link.source.id : link.source,
+            target: typeof link.target === 'object' ? link.target.id : link.target,
+            color: link.color || '#F0F0F0',
+            thickness: link.thickness || 1,
+          }));
 
           setGraphData({ nodes, links });
         } catch (error) {
@@ -234,72 +228,37 @@ function App() {
     if (!threeScene) return;
 
     graphData.links.forEach(link => {
+      // The link.source and link.target here are the actual node objects
+      // after the D3-force simulation has processed them.
       const sourceNode = link.source;
       const targetNode = link.target;
 
       if (sourceNode && targetNode && sourceNode.x !== undefined && sourceNode.y !== undefined && sourceNode.z !== undefined &&
           targetNode.x !== undefined && targetNode.y !== undefined && targetNode.z !== undefined) {
 
-        // Get the Three.js object for the link (if it's a default line object)
-        // This part is tricky as react-force-graph-3d doesn't expose link Three.js objects directly for default links.
-        // If you're using linkThreeObject to render custom objects, you'd access them here.
-        // For default lines, we might need to iterate through scene children or rely on internal updates.
+        // Access the custom Three.js Line object for the link
+        const threeObject = graphRef.current.getLinkRenderedObject(link);
 
-        // A more robust way for default links is to force a re-render of the graph
-        // by updating the graphData, which we are already doing in onNodeDrag.
-        // However, if the issue persists, it means the internal rendering isn't picking up the changes.
+        if (threeObject) {
+          // Update the line geometry
+          const positions = threeObject.geometry.attributes.position.array;
+          positions[0] = sourceNode.x;
+          positions[1] = sourceNode.y;
+          positions[2] = sourceNode.z;
+          positions[3] = targetNode.x;
+          positions[4] = targetNode.y;
+          positions[5] = targetNode.z;
+          threeObject.geometry.attributes.position.needsUpdate = true;
 
-        // For now, let's ensure the link sprite (if any) is updated.
-        // The actual line geometry update is handled by the library's internal D3-force integration.
-        // If the lines are not updating, it implies the D3-force simulation is not being re-evaluated correctly.
-
-        // Let's try to manually update the positions of the link's Three.js object if it exists.
-        // This requires knowing how react-force-graph-3d names/stores its internal link objects.
-        // Without direct access, forcing a simulation restart is the primary mechanism.
-
-        // Since direct manipulation of default link Three.js objects is not straightforward
-        // without diving deep into the library's internals, let's re-focus on ensuring
-        // the D3-force simulation is correctly updating the link positions.
-
-        // The problem might be that the simulation is not 'ticking' enough or fast enough
-        // after a node drag to update the link positions.
-
-        // Let's try to trigger a tick manually after the drag.
-        // This is already attempted with restart(), but let's be more explicit.
-
-        // If link lines are still disconnected, it implies the library's internal rendering
-        // of default links is not reacting to the node position changes as expected.
-        // In such a scenario, the most reliable solution is to render custom links
-        // using linkThreeObject and manually update their geometry.
-
-        // For now, let's ensure the simulation is always restarted after a drag.
-        // The previous code already does this in onNodeDragEnd.
-
-        // Given the persistent issue, the most direct solution is to use `linkThreeObject`
-        // to render custom lines and update their geometry manually.
-
-        // This will require importing THREE and creating a Line object.
-
-        // This is a more advanced solution, but it gives full control over link rendering.
-
-        // For the current problem, where the default links are not updating, it's likely
-        // due to the internal D3-force simulation not propagating changes to the link rendering.
-
-        // Let's try to force a re-render of the entire graph by changing the key prop.
-        // This is a common React pattern to force component re-mount/re-render.
-        // However, this can be performance intensive for large graphs.
-
-        // The most direct way to ensure links follow nodes is to update their positions
-        // within the D3-force simulation and then ensure the rendering reflects that.
-
-        // Let's try to use `linkThreeObject` to draw a simple line and update its geometry.
-        // This gives us full control over the link's visual representation.
-
-        // First, ensure THREE is imported.
-        // import * as THREE from 'three'; // Already done at the top
-
-        // Modify linkThreeObject and linkPositionUpdate
-
+          // Update the text sprite position (if it's a child of the line object)
+          const sprite = threeObject.children[0];
+          if (sprite) {
+            const middlePos = Object.assign({}, ...['x', 'y', 'z'].map(c => ({
+              [c]: sourceNode[c] + (targetNode[c] - sourceNode[c]) / 2
+            })));
+            Object.assign(sprite.position, middlePos);
+          }
+        }
       }
     });
   }, [graphData]);
