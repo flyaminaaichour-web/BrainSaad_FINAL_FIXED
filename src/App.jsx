@@ -8,7 +8,7 @@ function App() {
   const [graphData, setGraphData] = useState({ nodes: [], links: [] })
   const [nodePositions, setNodePositions] = useState({})
   const [useFixedPositions, setUseFixedPositions] = useState(false)
-  
+
   // Node management states
   const [newNodeId, setNewNodeId] = useState('')
   const [newNodeGroup, setNewNodeGroup] = useState(1)
@@ -23,7 +23,7 @@ function App() {
   const [showNodeManager, setShowNodeManager] = useState(false)
   const [jsonFile, setJsonFile] = useState(null)
 
-  // --- FIXED JSON LOADER ---
+  // Load JSON file
   useEffect(() => {
     if (jsonFile) {
       const reader = new FileReader()
@@ -31,24 +31,28 @@ function App() {
         try {
           const data = JSON.parse(e.target.result)
 
-          // Ensure nodes have defaults
+          // Normalize nodes
           const nodes = data.nodes.map(node => ({
             ...node,
             color: node.color || "#1A75FF",
             textSize: node.textSize || 6
           }))
 
-          // Build a lookup table (id -> node object)
+          // Build a lookup map
           const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]))
 
-          // Resolve link source/target into node objects
-          const links = data.links.map(link => ({
-            ...link,
-            source: nodeMap[link.source] || link.source,
-            target: nodeMap[link.target] || link.target,
-            color: link.color || "#F0F0F0",
-            thickness: link.thickness || 1
-          }))
+          // Normalize links
+          const links = data.links.map(link => {
+            const srcId = typeof link.source === "object" ? link.source.id : link.source
+            const tgtId = typeof link.target === "object" ? link.target.id : link.target
+            return {
+              ...link,
+              source: nodeMap[srcId],
+              target: nodeMap[tgtId],
+              color: link.color || "#F0F0F0",
+              thickness: link.thickness || 1
+            }
+          })
 
           setGraphData({ nodes, links })
         } catch (error) {
@@ -58,10 +62,11 @@ function App() {
       }
       reader.readAsText(jsonFile)
     } else {
-      setGraphData({ nodes: [], links: [] }) // Start with an empty graph
+      setGraphData({ nodes: [], links: [] })
     }
   }, [jsonFile])
 
+  // Refresh simulation when graphData changes
   useEffect(() => {
     if (graphRef.current) {
       graphRef.current.d3Force("link").links(graphData.links)
@@ -78,6 +83,7 @@ function App() {
     setSelectedLinkId(null)
   }
 
+  // Add node
   const addNode = () => {
     if (!newNodeId.trim()) {
       alert('Please enter a node ID')
@@ -87,6 +93,7 @@ function App() {
       alert('Node with this ID already exists')
       return
     }
+
     const newNode = {
       id: newNodeId.trim(),
       group: parseInt(newNodeGroup),
@@ -96,36 +103,42 @@ function App() {
       y: Math.random() * 200 - 100,
       z: Math.random() * 200 - 100
     }
-    setGraphData(prevData => ({
-      ...prevData,
-      nodes: [...prevData.nodes, newNode]
+
+    setGraphData(prev => ({
+      ...prev,
+      nodes: [...prev.nodes, newNode]
     }))
+
     setNewNodeId('')
-    console.log('Added node:', newNode)
   }
 
+  // Delete node
   const deleteNode = () => {
     if (!selectedNodeId) {
       alert('Please select a node to delete')
       return
     }
-    setGraphData(prevData => ({
-      nodes: prevData.nodes.filter(node => node.id !== selectedNodeId),
-      links: prevData.links.filter(link => 
-        (link.source.id || link.source) !== selectedNodeId &&
-        (link.target.id || link.target) !== selectedNodeId
+
+    setGraphData(prev => ({
+      nodes: prev.nodes.filter(n => n.id !== selectedNodeId),
+      links: prev.links.filter(l =>
+        (typeof l.source === "object" ? l.source.id : l.source) !== selectedNodeId &&
+        (typeof l.target === "object" ? l.target.id : l.target) !== selectedNodeId
       )
     }))
+
     setSelectedNodeId('')
-    console.log('Deleted node:', selectedNodeId)
   }
 
+  // Add link
   const addLink = (sourceId, targetId, value = 1) => {
     if (!sourceId || !targetId || sourceId === targetId) return
-    const linkExists = graphData.links.find(link => 
-      ((link.source.id || link.source) === sourceId && (link.target.id || link.target) === targetId) ||
-      ((link.source.id || link.source) === targetId && (link.target.id || link.target) === sourceId)
-    )
+
+    const linkExists = graphData.links.find(l => {
+      const s = typeof l.source === "object" ? l.source.id : l.source
+      const t = typeof l.target === "object" ? l.target.id : l.target
+      return (s === sourceId && t === targetId) || (s === targetId && t === sourceId)
+    })
     if (linkExists) return
 
     const newLink = {
@@ -135,18 +148,18 @@ function App() {
       color: "#F0F0F0",
       thickness: 1
     }
-    setGraphData(prevData => ({
-      ...prevData,
-      links: [...prevData.links, newLink]
+
+    setGraphData(prev => ({
+      ...prev,
+      links: [...prev.links, newLink]
     }))
   }
 
-  // --- SAVE CLEAN JSON ---
+  // Save JSON
   const saveGraphData = () => {
-    if (!graphRef.current) return
     const cleanData = {
-      nodes: graphData.nodes.map(({ id, group, color, textSize, x, y, z }) => ({
-        id, group, color, textSize, x, y, z
+      nodes: graphData.nodes.map(({ id, color, textSize, group, x, y, z }) => ({
+        id, color, textSize, group, x, y, z
       })),
       links: graphData.links.map(({ source, target, color, thickness }) => ({
         source: typeof source === "object" ? source.id : source,
@@ -154,24 +167,68 @@ function App() {
         color, thickness
       }))
     }
-    const dataStr = JSON.stringify(cleanData, null, 2)
-    const blob = new Blob([dataStr], { type: "application/json" })
+
+    const blob = new Blob([JSON.stringify(cleanData, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
+    const link = document.createElement('a')
     link.href = url
     link.download = 'graphData.json'
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    console.log('Graph data saved:', cleanData)
   }
 
-  // ... (rest of your UI & controls remain unchanged)
+  // Load positions
+  const loadNodePositions = (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const positions = JSON.parse(e.target.result)
+        setNodePositions(positions)
+
+        const updatedNodes = graphData.nodes.map(node => {
+          if (positions[node.id]) {
+            return {
+              ...node,
+              x: positions[node.id].x,
+              y: positions[node.id].y,
+              z: positions[node.id].z,
+              fx: positions[node.id].x,
+              fy: positions[node.id].y,
+              fz: positions[node.id].z
+            }
+          }
+          return node
+        })
+
+        setGraphData({ ...graphData, nodes: updatedNodes })
+        setUseFixedPositions(true)
+      } catch {
+        alert('Error loading node positions file')
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const toggleFixedPositions = () => {
+    const updatedNodes = graphData.nodes.map(node => {
+      if (useFixedPositions) {
+        const { fx, fy, fz, ...rest } = node
+        return rest
+      } else {
+        return { ...node, fx: node.x, fy: node.y, fz: node.z }
+      }
+    })
+    setGraphData({ ...graphData, nodes: updatedNodes })
+    setUseFixedPositions(!useFixedPositions)
+  }
 
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, position: 'relative' }}>
-      {/* Control panel and node/link management UI stays the same */}
+      {/* Control panel omitted for brevity (use your existing one) */}
 
       <ForceGraph3D
         ref={graphRef}
@@ -181,7 +238,9 @@ function App() {
         nodeColor={node => node.color || "#1A75FF"}
         linkThreeObjectExtend={true}
         linkThreeObject={link => {
-          const sprite = new SpriteText(`${(link.source.id || link.source)} > ${(link.target.id || link.target)}`)
+          const sprite = new SpriteText(
+            `${typeof link.source === "object" ? link.source.id : link.source} > ${typeof link.target === "object" ? link.target.id : link.target}`
+          )
           sprite.color = link.color || "#F0F0F0"
           sprite.textHeight = 1.5
           return sprite
@@ -202,13 +261,11 @@ function App() {
           setSelectedNodeId(node.id)
           setSelectedNodeColor(node.color || "#1A75FF")
           setSelectedNodeTextSize(node.textSize || 6)
-          console.log("Selected node:", node.id)
         }}
         onLinkClick={link => {
           setSelectedLinkId(link)
           setSelectedLinkColor(link.color || "#F0F0F0")
           setSelectedLinkThickness(link.thickness || 1)
-          console.log("Selected link:", link)
         }}
         nodeThreeObject={node => {
           const sprite = new SpriteText(node.id)
