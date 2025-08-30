@@ -186,21 +186,28 @@ function App() {
 
         const updatedNodes = graphData.nodes.map(node => {
           if (positions[node.id]) {
-            return {
+            // Apply coordinates based on the useFixedPositions toggle
+            const position = {
               ...node,
               x: positions[node.id].x,
               y: positions[node.id].y,
               z: positions[node.id].z,
-              fx: positions[node.id].x,
-              fy: positions[node.id].y,
-              fz: positions[node.id].z,
             };
+
+            if (useFixedPositions) {
+              return {
+                ...position,
+                fx: positions[node.id].x,
+                fy: positions[node.id].y,
+                fz: positions[node.id].z,
+              };
+            }
+            return position;
           }
           return node;
         });
 
         setGraphData({ ...graphData, nodes: updatedNodes });
-        setUseFixedPositions(true);
       } catch {
         alert('Error loading node positions file');
       }
@@ -211,9 +218,11 @@ function App() {
   const toggleFixedPositions = () => {
     const updatedNodes = graphData.nodes.map(node => {
       if (useFixedPositions) {
+        // Remove fixed positions
         const { fx, fy, fz, ...rest } = node;
         return rest;
       } else {
+        // Set fixed positions based on current positions
         return { ...node, fx: node.x, fy: node.y, fz: node.z };
       }
     });
@@ -234,7 +243,7 @@ function App() {
       const targetNode = link.target;
 
       if (sourceNode && targetNode && sourceNode.x !== undefined && sourceNode.y !== undefined && sourceNode.z !== undefined &&
-          targetNode.x !== undefined && targetNode.y !== undefined && targetNode.z !== undefined) {
+        targetNode.x !== undefined && targetNode.y !== undefined && targetNode.z !== undefined) {
 
         // Access the custom Three.js Line object for the link
         const threeObject = graphRef.current.getLinkRenderedObject(link);
@@ -283,7 +292,13 @@ function App() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', margin: 0, position: 'relative' }}>
-      {/* Control panel omitted for brevity (use your existing one) */}
+      {/* Control panel to be added */}
+      <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 1, backgroundColor: 'rgba(0,0,0,0.5)', padding: '10px' }}>
+        <button onClick={toggleFixedPositions}>
+          {useFixedPositions ? 'Release Nodes' : 'Fix Nodes'}
+        </button>
+        <input type="file" accept=".json" onChange={loadNodePositions} />
+      </div>
 
       <ForceGraph3D
         ref={graphRef}
@@ -348,7 +363,6 @@ function App() {
           sprite.textHeight = selectedNodeId === node.id ? (node.textSize || 6) + 2 : (node.textSize || 6);
           return sprite;
         }}
-        key={JSON.stringify(graphData)}
       />
     </div>
   );
