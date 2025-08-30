@@ -61,15 +61,7 @@ function App() {
     }
   }, [jsonFile]);
 
-  // Refresh simulation when graphData changes
-  useEffect(() => {
-    if (graphRef.current) {
-      graphRef.current.d3Force('link').links(graphData.links);
-      graphRef.current.d3Force('charge').nodes(graphData.nodes);
-      graphRef.current.d3Force('alphaTarget', 0.3).restart();
-      graphRef.current.graphData(graphData);
-    }
-  }, [graphData]);
+
 
   const handleNewGraph = () => {
     setGraphData({ nodes: [], links: [] });
